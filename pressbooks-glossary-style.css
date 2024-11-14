@@ -1,0 +1,21 @@
+/* pressbooks-glossary-style.css */
+.pressbooks-glossary {
+    margin: 20px 0;
+    padding: 15px;
+    background: #f9f9f9;
+    border-radius: 5px;
+}
+
+.pressbooks-glossary h3 {
+    font-size: 1.5em;
+    margin-bottom: 10px;
+}
+
+.pressbooks-glossary ul {
+    list-style: none;
+    padding: 0;
+}
+
+.pressbooks-glossary li {
+    margin-bottom: 5px;
+}
