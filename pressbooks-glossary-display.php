@@ -3,7 +3,7 @@
 Plugin Name: Pressbooks Glossary Display
 Description: A custom plugin to display Pressbooks glossary items on any page within the same WordPress installation.
 Version: 1.0
-Author: Your Name
+Author: Priit Tammets
 */
 
 // Function to retrieve and display Pressbooks glossary items
