@@ -1,8 +1,8 @@
 <?php
 /*
 Plugin Name: Pressbooks Glossary Display
-Description: A custom plugin to display Pressbooks glossary items on any page within the same WordPress installation.
-Version: 1.0
+Description: A custom plugin to display Pressbooks glossary items on any page within the same WordPress installation and highlight terms in the content.
+Version: 1.1
 Author: Priit Tammets
 */
 
@@ -29,7 +29,6 @@ function get_glossary_terms() {
     ]);
 
     $data = [];
-
     foreach ($glossary_terms as $term) {
         $data[] = [
             'title' => $term->post_title,
@@ -77,84 +76,87 @@ function pressbooks_glossary_settings_page() {
 add_action('admin_init', 'pressbooks_glossary_register_settings');
 
 function pressbooks_glossary_register_settings() {
-    // Register a new setting for the plugin
     register_setting('pressbooks_glossary_settings', 'pressbooks_glossary_sites');
 
-    // Add a new section for the settings
     add_settings_section(
-        'pressbooks_glossary_main_section', // Section ID
-        'Glossary Sources',                // Title
-        'pressbooks_glossary_section_callback', // Callback function for description
-        'pressbooks-glossary'              // Page slug
+        'pressbooks_glossary_main_section',
+        'Glossary Sources',
+        'pressbooks_glossary_section_callback',
+        'pressbooks-glossary'
     );
 
-    // Add a field for entering Pressbooks URLs
     add_settings_field(
-        'pressbooks_glossary_sites',       // Field ID
-        'Pressbooks Sites',                // Title
-        'pressbooks_glossary_sites_callback', // Callback function for field rendering
-        'pressbooks-glossary',             // Page slug
-        'pressbooks_glossary_main_section' // Section ID
+        'pressbooks_glossary_sites',
+        'Pressbooks Sites',
+        'pressbooks_glossary_sites_callback',
+        'pressbooks-glossary',
+        'pressbooks_glossary_main_section'
     );
 }
 
-// Section description callback
 function pressbooks_glossary_section_callback() {
     echo '<p>Enter the URLs of the Pressbooks sites whose glossaries you want to use. Add one URL per line.</p>';
 }
 
-// Field rendering callback
 function pressbooks_glossary_sites_callback() {
-    // Get the current value from the database
     $urls = get_option('pressbooks_glossary_sites', '');
     ?>
     <textarea name="pressbooks_glossary_sites" rows="10" cols="50" class="large-text"><?php echo esc_textarea($urls); ?></textarea>
     <?php
 }
 
-
-
-function display_pressbooks_glossary() {
-    // Get the list of Pressbooks URLs
+// Highlight glossary terms in the content
+function highlight_glossary_terms($content) {
+    // Fetch glossary terms from the saved configuration
     $urls = get_option('pressbooks_glossary_sites', '');
     $urls = array_filter(array_map('trim', explode("\n", $urls))); // Convert to array
 
     if (empty($urls)) {
-        return 'No Pressbooks sites configured.';
+        return $content; // No glossary sources configured
     }
 
-    $output = '<div class="pressbooks-glossary"><h3>Glossary</h3><ul>';
-
+    $glossary_terms = [];
     foreach ($urls as $url) {
         $api_url = rtrim($url, '/') . '/wp-json/custom/v1/glossary';
         $response = wp_remote_get($api_url);
 
-        if (is_wp_error($response)) {
-            $output .= '<li>Unable to fetch glossary from ' . esc_html($url) . ': ' . $response->get_error_message() . '</li>';
-            continue;
-        }
-
-        $body = wp_remote_retrieve_body($response);
-        $glossary_terms = json_decode($body, true);
-
-        if (!is_array($glossary_terms) || empty($glossary_terms)) {
-            $output .= '<li>No glossary terms found for ' . esc_html($url) . '</li>';
-            continue;
-        }
-
-        foreach ($glossary_terms as $term) {
-            if (isset($term['title']) && isset($term['content'])) {
-                $output .= '<li><strong>' . esc_html($term['title']) . '</strong>: ' . $term['content'] . '</li>';
+        if (!is_wp_error($response)) {
+            $terms = json_decode(wp_remote_retrieve_body($response), true);
+            if (is_array($terms)) {
+                $glossary_terms = array_merge($glossary_terms, $terms);
             }
         }
     }
 
-    $output .= '</ul></div>';
+    if (empty($glossary_terms)) {
+        return $content; // No terms fetched
+    }
 
-    return $output;
+    // Build a regex pattern for all glossary terms
+    $terms = array_map(function ($term) {
+        return preg_quote($term['title'], '/');
+    }, $glossary_terms);
+
+    $pattern = '/\b(' . implode('|', $terms) . ')\b/i';
+
+    // Replace terms with highlighted HTML
+    $content = preg_replace_callback($pattern, function ($matches) use ($glossary_terms) {
+        $term = strtolower($matches[1]);
+
+        foreach ($glossary_terms as $entry) {
+            if (strtolower($entry['title']) === $term) {
+                $tooltip = esc_attr(strip_tags($entry['content']));
+                return '<span class="glossary-term" title="' . $tooltip . '">' . esc_html($entry['title']) . '</span>';
+            }
+        }
+
+        return $matches[1]; // Fallback: return the original term
+    }, $content);
+
+    return $content;
 }
 
-add_shortcode('pressbooks_glossary', 'display_pressbooks_glossary');
+add_filter('the_content', 'highlight_glossary_terms');
 
 // Enqueue CSS for the glossary display
 function pressbooks_glossary_enqueue_styles() {
